@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - name: 安装 Rust stable（MSVC）
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - uses: Swatinem/rust-cache@v2.9.2
+
+      # 不带 --ignored：那些测试依赖真实任务栏和注册表
+      - name: 测试
+        run: cargo test --locked
+
+      - name: 构建
+        run: cargo build --release --locked

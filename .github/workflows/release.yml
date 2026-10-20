@@ -1,0 +1,47 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - name: 安装 Rust stable（MSVC）
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - uses: Swatinem/rust-cache@v2.9.2
+
+      # 不带 --ignored：那些测试依赖真实任务栏和注册表
+      - name: 测试
+        run: cargo test --locked
+
+      - name: 构建
+        run: cargo build --release --locked
+
+      - name: 打包
+        shell: pwsh
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          $name = "taskbar-tz-clock-$env:TAG-x64"
+          New-Item -ItemType Directory -Path "dist/$name" | Out-Null
+          Copy-Item target/release/taskbar-tz-clock.exe, README.md, LICENSE "dist/$name/"
+          Compress-Archive -Path "dist/$name/*" -DestinationPath "dist/$name.zip"
+          Get-ChildItem dist/*.zip
+
+      - name: 创建 Release
+        uses: softprops/action-gh-release@v3.0.3
+        with:
+          body_path: .github/release-body.md
+          generate_release_notes: true
+          files: dist/taskbar-tz-clock-${{ github.ref_name }}-x64.zip
+          fail_on_unmatched_files: true

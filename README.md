@@ -11,13 +11,19 @@
 - 托盘菜单切换时区、秒显示、开机自启
 - 单个 exe，约 280 KB（含图标），常驻私有内存约 3 MB，CPU 约 0.2%，不依赖运行时
 
-## 使用
+## 下载
+
+到 [Releases](https://github.com/xieyos/taskbar-tz-clock/releases/latest) 页面下载 `taskbar-tz-clock-<版本>-x64.zip`，解压后双击 `taskbar-tz-clock.exe` 即可，不需要安装 Rust。exe 没有代码签名，首次运行时 SmartScreen 可能拦截，点"更多信息 → 仍要运行"。
+
+## 从源码构建
 
 ```bash
 cargo build --release
 ```
 
 需要 Rust 1.88 以上（edition 2024）和 MSVC 工具链。运行 `target\release\taskbar-tz-clock.exe`，同一时间只会运行一个实例。
+
+## 使用
 
 右键（或左键）点托盘里的时钟图标打开菜单。Win11 默认把新图标收进"^"隐藏区，可以把它拖到任务栏上常驻：
 
