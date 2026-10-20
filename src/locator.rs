@@ -9,14 +9,24 @@ use windows::Win32::Foundation::{HWND, RECT};
 use windows::Win32::System::Com::{CLSCTX_INPROC_SERVER, CoCreateInstance};
 use windows::Win32::System::Variant::VARIANT;
 use windows::Win32::UI::Accessibility::{
-    CUIAutomation, IUIAutomation, IUIAutomation2, IUIAutomationElement, TreeScope_Descendants,
-    UIA_ClassNamePropertyId,
+    CUIAutomation, IUIAutomation, IUIAutomation2, IUIAutomationCondition, IUIAutomationElement,
+    TreeScope_Descendants, UIA_ClassNamePropertyId,
 };
 use windows::Win32::UI::WindowsAndMessaging::{FindWindowExW, FindWindowW, GetWindowRect};
 use windows::core::{Interface, w};
 
-/// Win11 托盘里时钟按钮的 UIA ClassName（本机 26100 实测）。
-const CLOCK_CLASS: &str = "SystemTray.OmniButtonLeft";
+/// Win11 托盘里时钟按钮可能的 UIA ClassName（本机 26100 实测）。
+///
+/// 后缀取决于时钟在"网络/音量/时钟"按钮组里的位置：通常是组的左端 `Left`，
+/// 网络按钮单独显示（例如断网时变成 `AccentButton`）后时钟会变成不带后缀的 `OmniButton`。
+const CLOCK_CLASSES: [&str; 4] = [
+    "SystemTray.OmniButtonLeft",
+    "SystemTray.OmniButton",
+    "SystemTray.OmniButtonMiddle",
+    "SystemTray.OmniButtonRight",
+];
+/// 名字对不上时可以当作时钟的类名，按优先级排列；`Middle`/`Right` 是音量、通知等按钮。
+const FALLBACK_CLASSES: [&str; 2] = ["SystemTray.OmniButtonLeft", "SystemTray.OmniButton"];
 /// 时钟按钮的 UIA Name 前缀，同类按钮有多个时用它挑出时钟。
 const CLOCK_NAME_PREFIXES: [&str; 2] = ["时钟", "Clock"];
 /// UIA 跨进程调用超时：Explorer 卡住时不能把我们的 UI 线程一起拖住。
@@ -65,30 +75,49 @@ impl Locator {
         let automation = self.automation.as_ref()?;
         let (element, rect) = unsafe {
             let root = automation.ElementFromHandle(taskbar).ok()?;
-            let condition = automation
-                .CreatePropertyCondition(UIA_ClassNamePropertyId, &VARIANT::from(CLOCK_CLASS))
-                .ok()?;
-            let items = root.FindAll(TreeScope_Descendants, &condition).ok()?;
-            let mut fallback = None;
-            let mut matched = None;
+            let mut condition = None::<IUIAutomationCondition>;
+            for class in CLOCK_CLASSES {
+                let next = automation
+                    .CreatePropertyCondition(UIA_ClassNamePropertyId, &VARIANT::from(class))
+                    .ok()?;
+                condition = Some(match condition {
+                    Some(prev) => automation.CreateOrCondition(&prev, &next).ok()?,
+                    None => next,
+                });
+            }
+            let items = root.FindAll(TreeScope_Descendants, &condition?).ok()?;
+            let mut best: Option<(u8, IUIAutomationElement, RECT)> = None;
             for i in 0..items.Length().ok()? {
                 let Ok(element) = items.GetElement(i) else { continue };
+                let class = element.CurrentClassName().map(|n| n.to_string()).unwrap_or_default();
+                let name = element.CurrentName().map(|n| n.to_string()).unwrap_or_default();
+                let Some(rank) = clock_rank(&class, &name) else { continue };
+                if best.as_ref().is_some_and(|(r, ..)| *r <= rank) {
+                    continue;
+                }
                 let Some(rect) = element.CurrentBoundingRectangle().ok().filter(is_valid) else {
                     continue;
                 };
-                let name = element.CurrentName().map(|n| n.to_string()).unwrap_or_default();
-                if CLOCK_NAME_PREFIXES.iter().any(|p| name.starts_with(p)) {
-                    matched = Some((element, rect));
+                best = Some((rank, element, rect));
+                if rank == 0 {
                     break;
                 }
-                // 非中英文系统名字对不上时，退回第一个同类按钮
-                fallback.get_or_insert((element, rect));
             }
-            matched.or(fallback)?
+            best.map(|(_, element, rect)| (element, rect))?
         };
         self.cached.set(Some(element));
         Some(rect)
     }
+}
+
+/// 候选按钮像时钟的程度，越小越像；`None` 表示不是时钟。
+///
+/// 名字以"时钟"/"Clock"开头的最可靠；非中英文系统名字对不上时，按类名退回。
+fn clock_rank(class: &str, name: &str) -> Option<u8> {
+    if CLOCK_NAME_PREFIXES.iter().any(|p| name.starts_with(p)) {
+        return Some(0);
+    }
+    FALLBACK_CLASSES.iter().position(|c| *c == class).map(|i| i as u8 + 1)
 }
 
 /// 主任务栏窗口。
@@ -114,6 +143,16 @@ fn is_valid(rect: &RECT) -> bool {
 mod tests {
     use super::*;
     use windows::Win32::System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx};
+
+    #[test]
+    fn rank_prefers_name_then_left_then_plain() {
+        assert_eq!(clock_rank("SystemTray.OmniButton", "时钟 21:16"), Some(0));
+        assert_eq!(clock_rank("SystemTray.OmniButtonRight", "Clock 9:16 PM"), Some(0));
+        assert_eq!(clock_rank("SystemTray.OmniButtonLeft", "Uhr"), Some(1));
+        assert_eq!(clock_rank("SystemTray.OmniButton", "Uhr"), Some(2));
+        assert_eq!(clock_rank("SystemTray.OmniButtonRight", "音量 100%"), None);
+        assert_eq!(clock_rank("SystemTray.OmniButtonMiddle", ""), None);
+    }
 
     /// 依赖真实任务栏，默认跳过：`cargo test -- --ignored`
     #[test]
