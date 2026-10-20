@@ -60,7 +60,7 @@ cargo build --release
 - 这是视觉覆盖：鼠标悬停时系统弹出的提示、日历面板里显示的仍是系统时区的时间。
 - 只覆盖主显示器任务栏上的时钟。
 - 任务栏是半透明亚克力材质，底色取时钟左侧的任务栏像素，壁纸颜色变化很大时边缘可能看得出来。
-- 时钟按钮靠 UI Automation 定位（Win11：`SystemTray.OmniButtonLeft`），Windows 大版本更新可能改变这个结构。
+- 时钟按钮靠 UI Automation 定位（Win11：`SystemTray.OmniButton*`，名字以"时钟"/"Clock"开头），Windows 大版本更新可能改变这个结构。
 - 被任务栏盖住后，最多 100 ms 内重新回到上层，期间原时钟可能闪一下。
 
 ## 图标
