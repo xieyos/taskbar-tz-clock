@@ -1,6 +1,6 @@
 [package]
 name = "taskbar-tz-clock"
-version = "0.1.0"
+version = "1.0.1"
 edition = "2024"
 description = "用置顶悬浮窗覆盖任务栏时钟，显示指定时区的时间"
 license = "MIT"
