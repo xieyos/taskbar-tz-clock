@@ -1,4 +1,4 @@
-# taskbar-tz-clock · 任务栏时区时钟
+# taskbar-tz-clock · 任务栏时区时钟(Claude改时区必备)
 
 <img src="assets/icon-source.png" width="96" align="right" alt="图标">
 
